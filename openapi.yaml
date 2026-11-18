@@ -1,0 +1,141 @@
+openapi: 3.0.3
+info:
+  title: MedClinic REST API
+  description: OpenAPI специфікація серверної логіки електронної реєстратури поліклініки (Лабораторна робота №3).
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:3000
+    description: Локальний сервер розробки
+
+tags:
+  - name: Consultations
+    description: Управління записами пацієнтів на консультації
+
+paths:
+  /api/consultations:
+    get:
+      tags: [Consultations]
+      summary: Отримати список усіх консультацій
+      responses:
+        '200':
+          description: Успішне отримання списку записів
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Consultation'
+    post:
+      tags: [Consultations]
+      summary: Створити новий запис на консультацію
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConsultationInput'
+      responses:
+        '201':
+          description: Запис успішно створено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Consultation'
+        '400':
+          description: Помилка валідації вхідних даних
+
+  /api/consultations/{id}:
+    get:
+      tags: [Consultations]
+      summary: Отримати деталі конкретної консультації за ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Запис знайдено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Consultation'
+        '404':
+          description: Запис із вказаним ID не знайдено
+    delete:
+      tags: [Consultations]
+      summary: Видалити запис на консультацію
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Запис успішно видалено
+        '404':
+          description: Запис не знайдено
+
+  /api/consultations/{id}/confirm:
+    patch:
+      tags: [Consultations]
+      summary: Змінити статус підтвердження консультації (pending / confirmed)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Статус оновлено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Consultation'
+        '404':
+          description: Запис не знайдено
+
+components:
+  schemas:
+    Consultation:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        patient_name:
+          type: string
+          example: Коваленко Олена
+        doctor_specialty:
+          type: string
+          example: Терапевт
+        appointment_date:
+          type: string
+          example: 2026-11-22T10:30
+        status:
+          type: string
+          enum: [pending, confirmed]
+          example: pending
+        created_at:
+          type: string
+          format: date-time
+    ConsultationInput:
+      type: object
+      required:
+        - patient_name
+        - doctor_specialty
+        - appointment_date
+      properties:
+        patient_name:
+          type: string
+          example: Петренко Андрій
+        doctor_specialty:
+          type: string
+          example: Кардіолог
+        appointment_date:
+          type: string
+          example: 2026-11-25T15:00
