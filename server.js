@@ -8,16 +8,41 @@ const helmet = require('helmet');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Завантаження OpenAPI специфікації
 const swaggerDocument = YAML.load(path.join(__dirname, 'openapi.yaml'));
 
+// Конфігурація пулу MySQL (підтримує локальний запуск і хмарні БД із портом та SSL)
 const pool = mysql.createPool({
   host: process.env.DB_HOST || 'localhost',
+  port: Number(process.env.DB_PORT) || 3306,
   user: process.env.DB_USER || 'root',
   password: process.env.DB_PASSWORD || '',
   database: process.env.DB_NAME || 'medclinic_lab2',
+  ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
   waitForConnections: true,
   connectionLimit: 10
 });
+
+// Автоматична ініціалізація таблиці при старті сервера
+async function initDatabase() {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS consultations (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        patient_name VARCHAR(150) NOT NULL,
+        patient_phone VARCHAR(20) NOT NULL DEFAULT '+380000000000',
+        doctor_specialty VARCHAR(100) NOT NULL,
+        appointment_date VARCHAR(50) NOT NULL,
+        symptoms TEXT,
+        status VARCHAR(20) DEFAULT 'pending',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    console.log('База даних MySQL успішно підключена та готова до роботи.');
+  } catch (err) {
+    console.error('Помилка ініціалізації БД:', err.message);
+  }
+}
 
 // 1. Базова безпека HTTP-заголовків (налаштовано для роботи React CDN у браузері)
 app.use(
@@ -28,10 +53,72 @@ app.use(
 
 // Обмеження розміру JSON-тіла запиту (захист від перевантаження пам'яті)
 app.use(express.json({ limit: '10kb' }));
+
+// 2. Middleware моніторингу продуктивності: підрахунок запитів, помилок та середнього часу відповіді
+const metrics = {
+  totalRequests: 0,
+  errorCount: 0,
+  avgResponseTimeMs: 0
+};
+
+app.use((req, res, next) => {
+  const start = process.hrtime.bigint();
+  metrics.totalRequests += 1;
+
+  res.on('finish', () => {
+    const durationMs = Number(process.hrtime.bigint() - start) / 1e6;
+    metrics.avgResponseTimeMs = Number(
+      ((metrics.avgResponseTimeMs * (metrics.totalRequests - 1) + durationMs) / metrics.totalRequests).toFixed(2)
+    );
+    if (res.statusCode >= 500) {
+      metrics.errorCount += 1;
+    }
+  });
+
+  next();
+});
+
+// Роздача статики фронтенду та інтерактивної документації Swagger UI
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
-// 2. Простий in-memory Rate Limiter для POST-запитів (не більше 15 заявок за хвилину з одного IP)
+// 3. Ендпоінт моніторингу продуктивності та стану сервісу (Health Check для Render / UptimeRobot)
+app.get('/api/health', async (req, res) => {
+  const dbStart = process.hrtime.bigint();
+  let dbStatus = 'connected';
+  let dbLatencyMs = 0;
+
+  try {
+    await pool.query('SELECT 1');
+    dbLatencyMs = Number((Number(process.hrtime.bigint() - dbStart) / 1e6).toFixed(2));
+  } catch (err) {
+    dbStatus = 'disconnected';
+  }
+
+  const mem = process.memoryUsage();
+  const statusCode = dbStatus === 'connected' ? 200 : 503;
+
+  res.status(statusCode).json({
+    service: 'MedClinic Cloud API',
+    status: dbStatus === 'connected' ? 'healthy' : 'degraded',
+    environment: process.env.NODE_ENV || 'production',
+    uptimeSeconds: Math.floor(process.uptime()),
+    database: {
+      status: dbStatus,
+      latencyMs: dbLatencyMs
+    },
+    performance: {
+      totalRequests: metrics.totalRequests,
+      serverErrors: metrics.errorCount,
+      avgResponseTimeMs: metrics.avgResponseTimeMs,
+      rssMemoryMb: Number((mem.rss / 1024 / 1024).toFixed(2)),
+      heapUsedMb: Number((mem.heapUsed / 1024 / 1024).toFixed(2))
+    },
+    timestamp: new Date().toISOString()
+  });
+});
+
+// 4. In-memory Rate Limiter для POST-запитів (не більше 15 заявок за хвилину з одного IP)
 const requestLog = new Map();
 function postRateLimiter(req, res, next) {
   const ip = req.ip;
@@ -47,7 +134,7 @@ function postRateLimiter(req, res, next) {
   next();
 }
 
-// 3. Функція санітизації та валідації даних форми
+// 5. Санітизація та валідація даних форми
 const ALLOWED_SPECIALTIES = ['Терапевт', 'Кардіолог', 'Невролог', 'Офтальмолог', 'Дерматолог'];
 
 function sanitizeText(str) {
@@ -67,7 +154,6 @@ function validateConsultationInput(body) {
     errors.push('ПІБ пацієнта має містити від 3 до 100 символів.');
   }
 
-  // Перевірка українського формату номера: +380XXXXXXXXX або 0XXXXXXXXX
   const phoneRegex = /^(\+380|0)\d{9}$/;
   if (!phoneRegex.test(patient_phone.replace(/[\s()-]/g, ''))) {
     errors.push('Некоректний номер телефону (приклад: +380671234567 або 0671234567).');
@@ -97,9 +183,17 @@ function validateConsultationInput(body) {
   };
 }
 
-// GET — отримати список усіх консультацій
+// 6. REST API маршрути для роботи з консультаціями
 app.get('/api/consultations', async (req, res) => {
   try {
+    const { specialty } = req.query;
+    if (specialty) {
+      const [rows] = await pool.query(
+        'SELECT * FROM consultations WHERE doctor_specialty = ? ORDER BY id DESC',
+        [specialty]
+      );
+      return res.json(rows);
+    }
     const [rows] = await pool.query('SELECT * FROM consultations ORDER BY id DESC');
     res.json(rows);
   } catch (err) {
@@ -107,7 +201,6 @@ app.get('/api/consultations', async (req, res) => {
   }
 });
 
-// GET — деталі за ID
 app.get('/api/consultations/:id', async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) {
@@ -125,7 +218,6 @@ app.get('/api/consultations/:id', async (req, res) => {
   }
 });
 
-// POST — створення запису з повною валідацією та санітизацією
 app.post('/api/consultations', postRateLimiter, async (req, res) => {
   const { errors, cleanData } = validateConsultationInput(req.body);
   if (errors.length > 0) {
@@ -150,7 +242,6 @@ app.post('/api/consultations', postRateLimiter, async (req, res) => {
   }
 });
 
-// PATCH — зміна статусу
 app.patch('/api/consultations/:id/confirm', async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) {
@@ -172,7 +263,6 @@ app.patch('/api/consultations/:id/confirm', async (req, res) => {
   }
 });
 
-// DELETE — видалення
 app.delete('/api/consultations/:id', async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) {
@@ -190,6 +280,11 @@ app.delete('/api/consultations/:id', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Сервер MedClinic (Lab 4 Security & Validation) запущено: http://localhost:${PORT}`);
+// Запуск сервера після ініціалізації БД
+initDatabase().then(() => {
+  app.listen(PORT, () => {
+    console.log(`Сервер MedClinic запущено на порту ${PORT}`);
+    console.log(`OpenAPI (Swagger UI): http://localhost:${PORT}/api-docs`);
+    console.log(`Health Check: http://localhost:${PORT}/api/health`);
+  });
 });

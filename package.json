@@ -2,8 +2,12 @@
   "name": "web-lab-1",
   "version": "1.0.0",
   "main": "server.js",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
-    "start": "node --env-file=.env server.js"
+    "start": "node server.js",
+    "dev": "node --env-file=.env server.js"
   },
   "description": "",
   "keywords": [],
