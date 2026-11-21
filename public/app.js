@@ -1,8 +1,10 @@
 const { useState, useEffect } = React;
 
 const SPECIALTIES = ['Усі напрямки', 'Терапевт', 'Кардіолог', 'Невролог', 'Офтальмолог', 'Дерматолог'];
+const STORAGE_KEY = 'medclinic_patient_draft';
+const SESSION_COUNT_KEY = 'medclinic_session_created_count';
+const SESSION_FILTER_KEY = 'medclinic_session_filter';
 
-// Компонент картки окремої консультації
 function ConsultationCard({ item, onToggleStatus, onDelete }) {
   const isConfirmed = item.status === 'confirmed';
 
@@ -16,7 +18,12 @@ function ConsultationCard({ item, onToggleStatus, onDelete }) {
           </span>
         </div>
         <h3 className="patient-name">{item.patient_name}</h3>
-        <p className="date-info">Час прийому: <strong>{item.appointment_date.replace('T', ' ')}</strong></p>
+        <p className="date-info">
+          Тел: <strong>{item.patient_phone}</strong> &bull; Прийом: <strong>{item.appointment_date.replace('T', ' ')}</strong>
+        </p>
+        {item.symptoms && (
+          <p className="symptoms-box">Скарги: {item.symptoms}</p>
+        )}
       </div>
 
       <div className="card-actions">
@@ -26,7 +33,7 @@ function ConsultationCard({ item, onToggleStatus, onDelete }) {
         >
           {isConfirmed ? 'Повернути в очікування' : 'Підтвердити запис'}
         </button>
-        <button className="btn-delete" onClick={() => onDelete(item.id)} title="Скасувати запис">
+        <button className="btn-delete" onClick={() => onDelete(item.id)}>
           Скасувати
         </button>
       </div>
@@ -34,14 +41,41 @@ function ConsultationCard({ item, onToggleStatus, onDelete }) {
   );
 }
 
-// Головний компонент
 function App() {
+  // Зчитування збережених даних із localStorage при завантаженні
+  const savedDraft = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+
   const [consultations, setConsultations] = useState([]);
-  const [patientName, setPatientName] = useState('');
-  const [specialty, setSpecialty] = useState('Терапевт');
-  const [date, setDate] = useState('2026-11-22T10:00');
-  const [filterSpecialty, setFilterSpecialty] = useState('Усі напрямки');
+  const [patientName, setPatientName] = useState(savedDraft.patientName || '');
+  const [patientPhone, setPatientPhone] = useState(savedDraft.patientPhone || '');
+  const [specialty, setSpecialty] = useState(savedDraft.specialty || 'Терапевт');
+  const [date, setDate] = useState(savedDraft.date || '2026-11-25T10:00');
+  const [symptoms, setSymptoms] = useState(savedDraft.symptoms || '');
+
+  // Дані поточної вкладки у sessionStorage
+  const [filterSpecialty, setFilterSpecialty] = useState(
+    sessionStorage.getItem(SESSION_FILTER_KEY) || 'Усі напрямки'
+  );
+  const [sessionCount, setSessionCount] = useState(
+    Number(sessionStorage.getItem(SESSION_COUNT_KEY) || 0)
+  );
+
+  const [formError, setFormError] = useState('');
+  const [formSuccess, setFormSuccess] = useState('');
   const [loading, setLoading] = useState(true);
+
+  // Автоматичне збереження чернетки форми в localStorage при зміні полів
+  useEffect(() => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ patientName, patientPhone, specialty, date, symptoms })
+    );
+  }, [patientName, patientPhone, specialty, date, symptoms]);
+
+  // Збереження активного фільтра в sessionStorage
+  useEffect(() => {
+    sessionStorage.setItem(SESSION_FILTER_KEY, filterSpecialty);
+  }, [filterSpecialty]);
 
   useEffect(() => {
     fetch('/api/consultations')
@@ -50,31 +84,56 @@ function App() {
         setConsultations(data);
         setLoading(false);
       })
-      .catch((err) => {
-        console.error('Помилка отримання даних:', err);
-        setLoading(false);
-      });
+      .catch(() => setLoading(false));
   }, []);
+
+  const handleClearStorage = () => {
+    localStorage.removeItem(STORAGE_KEY);
+    setPatientName('');
+    setPatientPhone('');
+    setSymptoms('');
+    setFormError('');
+    setFormSuccess('Локальне сховище очищено.');
+  };
 
   const handleCreate = async (e) => {
     e.preventDefault();
-    if (!patientName.trim() || !date) return;
+    setFormError('');
+    setFormSuccess('');
+
+    // Клієнтська перевірка перед відправкою
+    if (patientName.trim().length < 3) {
+      setFormError('Введіть коректне ПІБ (мінімум 3 символи).');
+      return;
+    }
 
     const res = await fetch('/api/consultations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         patient_name: patientName,
+        patient_phone: patientPhone,
         doctor_specialty: specialty,
-        appointment_date: date
+        appointment_date: date,
+        symptoms
       })
     });
 
-    if (res.ok) {
-      const created = await res.json();
-      setConsultations([created, ...consultations]);
-      setPatientName('');
+    const data = await res.json();
+
+    if (!res.ok) {
+      setFormError(data.error || 'Помилка валідації даних');
+      return;
     }
+
+    setConsultations([data, ...consultations]);
+    setSymptoms(''); // Очищаємо тільки симптоми, ПІБ і телефон залишаються в localStorage для зручності
+    setFormSuccess('Запис успішно збережено та перевірено сервером.');
+
+    // Оновлюємо лічильник поточної сесії в sessionStorage
+    const nextCount = sessionCount + 1;
+    setSessionCount(nextCount);
+    sessionStorage.setItem(SESSION_COUNT_KEY, String(nextCount));
   };
 
   const handleToggleStatus = async (id) => {
@@ -104,29 +163,52 @@ function App() {
             <span className="logo-cross">+</span>
             <div>
               <h1>MedClinic</h1>
-              <span>Електронна реєстратура консультацій</span>
+              <span>Захищена система запису на консультації</span>
             </div>
           </div>
-          <div className="stats-pill">
-            Усього записів: <strong>{consultations.length}</strong>
+          <div className="nav-badges">
+            <div className="stats-pill" title="Зберігається у sessionStorage до закриття вкладки">
+              Заявок за сесію: <strong>{sessionCount}</strong>
+            </div>
+            <div className="stats-pill">
+              У базі: <strong>{consultations.length}</strong>
+            </div>
           </div>
         </div>
       </header>
 
       <main className="main-grid">
-        {/* Ліва колонка: форма запису */}
         <section className="panel form-panel">
-          <h2>Новий запис на консультацію</h2>
-          <p className="panel-subtitle">Оберіть профільного спеціаліста та зручний час візиту</p>
+          <div className="form-header-row">
+            <h2>Запис на прийом</h2>
+            <button type="button" className="btn-link" onClick={handleClearStorage} title="Очистити localStorage">
+              Очистити кеш форми
+            </button>
+          </div>
+          <p className="panel-subtitle">Дані форми автоматично зберігаються у localStorage</p>
+
+          {formError && <div className="alert alert-error">{formError}</div>}
+          {formSuccess && <div className="alert alert-success">{formSuccess}</div>}
 
           <form onSubmit={handleCreate} className="booking-form">
             <label>
-              ПІБ пацієнта
+              ПІБ пацієнта *
               <input
                 type="text"
-                placeholder="Наприклад: Шевченко Тарас"
+                placeholder="Шевченко Тарас Григорович"
                 value={patientName}
                 onChange={(e) => setPatientName(e.target.value)}
+                required
+              />
+            </label>
+
+            <label>
+              Контактний телефон *
+              <input
+                type="tel"
+                placeholder="+380671234567"
+                value={patientPhone}
+                onChange={(e) => setPatientPhone(e.target.value)}
                 required
               />
             </label>
@@ -141,7 +223,7 @@ function App() {
             </label>
 
             <label>
-              Дата та час консультації
+              Дата та час консультації *
               <input
                 type="datetime-local"
                 value={date}
@@ -150,11 +232,20 @@ function App() {
               />
             </label>
 
-            <button type="submit" className="btn-primary">Записати на прийом</button>
+            <label>
+              Причина звернення / скарги
+              <textarea
+                rows="3"
+                placeholder="Коротко опишіть симптоми (до 500 символів)..."
+                value={symptoms}
+                onChange={(e) => setSymptoms(e.target.value)}
+              />
+            </label>
+
+            <button type="submit" className="btn-primary">Надіслати заявку</button>
           </form>
         </section>
 
-        {/* Права колонка: динамічний список записів */}
         <section className="panel list-panel">
           <div className="list-header">
             <h2>Журнал консультацій</h2>
@@ -170,7 +261,7 @@ function App() {
           </div>
 
           {loading ? (
-            <div className="empty-state">Завантаження розкладу з бази даних...</div>
+            <div className="empty-state">Завантаження даних...</div>
           ) : filteredList.length === 0 ? (
             <div className="empty-state">Записів за обраним напрямком не знайдено.</div>
           ) : (

@@ -291,3 +291,69 @@ body {
   border-radius: 8px;
   border: 1px dashed #cbd5e1;
 }
+
+.nav-badges {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.form-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: #0284c7;
+  font-size: 0.8rem;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.booking-form textarea {
+  padding: 0.65rem 0.8rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  background-color: #f8fafc;
+  color: #0f172a;
+  resize: vertical;
+  outline: none;
+}
+
+.booking-form textarea:focus {
+  border-color: #0284c7;
+  background-color: #ffffff;
+}
+
+.alert {
+  padding: 0.65rem 0.85rem;
+  border-radius: 8px;
+  font-size: 0.825rem;
+  margin-bottom: 1rem;
+  line-height: 1.4;
+}
+
+.alert-error {
+  background-color: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+
+.alert-success {
+  background-color: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+}
+
+.symptoms-box {
+  margin-top: 0.45rem;
+  font-size: 0.825rem;
+  color: #475569;
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  padding: 0.45rem 0.65rem;
+  border-radius: 6px;
+}
