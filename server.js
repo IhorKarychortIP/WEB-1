@@ -185,7 +185,7 @@ function validateConsultationInput(body) {
 
 // 6. Інтеграція Google Gemini AI API (аналіз симптомів та чат-бот реєстратури)
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_MODEL = 'gemini-2.5-flash';
+const GEMINI_MODEL = 'gemini-3.8-flash';
 
 async function callGemini(promptText, systemInstruction) {
   if (!GEMINI_API_KEY) {
