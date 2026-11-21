@@ -185,41 +185,65 @@ function validateConsultationInput(body) {
 
 // 6. Інтеграція Google Gemini AI API (аналіз симптомів та чат-бот реєстратури)
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_MODEL = 'gemini-3.8-flash';
+const GEMINI_MODELS = [
+  'gemini-3.5-flash-lite',
+  'gemini-3.6-flash',
+  'gemini-4-hydrogen',
+  'gemini-3.8-flash'
+];
 
 async function callGemini(promptText, systemInstruction) {
   if (!GEMINI_API_KEY) {
     throw new Error('На сервері не налаштовано змінну середовища GEMINI_API_KEY.');
   }
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+  let lastError = '';
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      systemInstruction: {
-        parts: [{ text: systemInstruction }]
-      },
-      contents: [
-        {
-          role: 'user',
-          parts: [{ text: promptText }]
-        }
-      ],
-      generationConfig: {
-        temperature: 0.4
+  for (const model of GEMINI_MODELS) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(12000),
+        body: JSON.stringify({
+          systemInstruction: {
+            parts: [{ text: systemInstruction }]
+          },
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: promptText }]
+            }
+          ],
+          generationConfig: {
+            temperature: 0.4
+          }
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        return data.candidates?.[0]?.content?.parts?.[0]?.text || 'Не вдалося сформувати відповідь.';
       }
-    })
-  });
 
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Помилка Gemini API (${response.status}): ${errText}`);
-  }
+      lastError = `Помилка Gemini API (${response.status}) на моделі ${model}`;
+      // Якщо перевантаження (503), ліміт (429) або недоступність моделі (404) — йдемо до наступної
+      if (![404, 429, 503].includes(response.status)) {
+        const errText = await response.text();
+        throw new Error(`${lastError}: ${errText}`);
+      }
+    } catch (err) {
+      lastError = err.name === 'TimeoutError'
+        ? `Таймаут відповіді від ${model}`
+        : `Мережева помилка на ${model}: ${err.message}`;
+      continue;
+    }
+      throw err;
+    }
 
-  const data = await response.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || 'Не вдалося сформувати відповідь.';
+  throw new Error(`${lastError}. Усі моделі тимчасово перевантажені, спробуйте за кілька секунд.`);
 }
 
 app.post('/api/ai/analyze-symptoms', postRateLimiter, async (req, res) => {
