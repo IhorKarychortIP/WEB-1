@@ -42,7 +42,6 @@ function ConsultationCard({ item, onToggleStatus, onDelete }) {
 }
 
 function App() {
-  // Зчитування збережених даних із localStorage при завантаженні
   const savedDraft = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
 
   const [consultations, setConsultations] = useState([]);
@@ -52,7 +51,6 @@ function App() {
   const [date, setDate] = useState(savedDraft.date || '2026-11-25T10:00');
   const [symptoms, setSymptoms] = useState(savedDraft.symptoms || '');
 
-  // Дані поточної вкладки у sessionStorage
   const [filterSpecialty, setFilterSpecialty] = useState(
     sessionStorage.getItem(SESSION_FILTER_KEY) || 'Усі напрямки'
   );
@@ -64,7 +62,17 @@ function App() {
   const [formSuccess, setFormSuccess] = useState('');
   const [loading, setLoading] = useState(true);
 
-  // Автоматичне збереження чернетки форми в localStorage при зміні полів
+  // Стани для AI-аналізу симптомів
+  const [aiAnalysis, setAiAnalysis] = useState(null);
+  const [aiAnalyzing, setAiAnalyzing] = useState(false);
+
+  // Стани для AI-чат-бота
+  const [chatMessages, setChatMessages] = useState([
+    { role: 'assistant', text: 'Вітаю у MedClinic! Підкажу, до якого лікаря звернутися або як підготуватися до прийому.' }
+  ]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+
   useEffect(() => {
     localStorage.setItem(
       STORAGE_KEY,
@@ -72,7 +80,6 @@ function App() {
     );
   }, [patientName, patientPhone, specialty, date, symptoms]);
 
-  // Збереження активного фільтра в sessionStorage
   useEffect(() => {
     sessionStorage.setItem(SESSION_FILTER_KEY, filterSpecialty);
   }, [filterSpecialty]);
@@ -87,11 +94,75 @@ function App() {
       .catch(() => setLoading(false));
   }, []);
 
+  // Запит до Gemini API для аналізу симптомів
+  const handleAnalyzeSymptoms = async () => {
+    setFormError('');
+    if (symptoms.trim().length < 5) {
+      setFormError('Введіть опис симптомів (мінімум 5 символів), щоб AI підібрав спеціаліста.');
+      return;
+    }
+
+    setAiAnalyzing(true);
+    setAiAnalysis(null);
+
+    try {
+      const res = await fetch('/api/ai/analyze-symptoms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symptoms })
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setFormError(data.error || 'Помилка AI-аналізу');
+      } else {
+        setAiAnalysis(data);
+        setSpecialty(data.recommended_specialty);
+      }
+    } catch (err) {
+      setFormError('Помилка з’єднання з AI-сервісом.');
+    } finally {
+      setAiAnalyzing(false);
+    }
+  };
+
+  // Надсилання повідомлення у чат-бот Gemini
+  const handleSendChat = async (e) => {
+    e.preventDefault();
+    if (!chatInput.trim() || chatLoading) return;
+
+    const userText = chatInput.trim();
+    setChatMessages((prev) => [...prev, { role: 'user', text: userText }]);
+    setChatInput('');
+    setChatLoading(true);
+
+    try {
+      const res = await fetch('/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: userText })
+      });
+      const data = await res.json();
+      setChatMessages((prev) => [
+        ...prev,
+        { role: 'assistant', text: res.ok ? data.reply : `Помилка: ${data.error}` }
+      ]);
+    } catch (err) {
+      setChatMessages((prev) => [
+        ...prev,
+        { role: 'assistant', text: 'Не вдалося отримати відповідь від AI-асистента.' }
+      ]);
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
   const handleClearStorage = () => {
     localStorage.removeItem(STORAGE_KEY);
     setPatientName('');
     setPatientPhone('');
     setSymptoms('');
+    setAiAnalysis(null);
     setFormError('');
     setFormSuccess('Локальне сховище очищено.');
   };
@@ -101,7 +172,6 @@ function App() {
     setFormError('');
     setFormSuccess('');
 
-    // Клієнтська перевірка перед відправкою
     if (patientName.trim().length < 3) {
       setFormError('Введіть коректне ПІБ (мінімум 3 символи).');
       return;
@@ -127,10 +197,10 @@ function App() {
     }
 
     setConsultations([data, ...consultations]);
-    setSymptoms(''); // Очищаємо тільки симптоми, ПІБ і телефон залишаються в localStorage для зручності
+    setSymptoms('');
+    setAiAnalysis(null);
     setFormSuccess('Запис успішно збережено та перевірено сервером.');
 
-    // Оновлюємо лічильник поточної сесії в sessionStorage
     const nextCount = sessionCount + 1;
     setSessionCount(nextCount);
     sessionStorage.setItem(SESSION_COUNT_KEY, String(nextCount));
@@ -162,12 +232,12 @@ function App() {
           <div className="logo">
             <span className="logo-cross">+</span>
             <div>
-              <h1>MedClinic</h1>
-              <span>Захищена система запису на консультації</span>
+              <h1>MedClinic AI</h1>
+              <span>Інтелектуальна система запису на консультації</span>
             </div>
           </div>
           <div className="nav-badges">
-            <div className="stats-pill" title="Зберігається у sessionStorage до закриття вкладки">
+            <div className="stats-pill">
               Заявок за сесію: <strong>{sessionCount}</strong>
             </div>
             <div className="stats-pill">
@@ -178,14 +248,15 @@ function App() {
       </header>
 
       <main className="main-grid">
+        {/* Ліва колонка: форма запису + AI-аналіз симптомів */}
         <section className="panel form-panel">
           <div className="form-header-row">
             <h2>Запис на прийом</h2>
-            <button type="button" className="btn-link" onClick={handleClearStorage} title="Очистити localStorage">
-              Очистити кеш форми
+            <button type="button" className="btn-link" onClick={handleClearStorage}>
+              Очистити кеш
             </button>
           </div>
-          <p className="panel-subtitle">Дані форми автоматично зберігаються у localStorage</p>
+          <p className="panel-subtitle">Опишіть скарги — Gemini AI допоможе обрати лікаря</p>
 
           {formError && <div className="alert alert-error">{formError}</div>}
           {formSuccess && <div className="alert alert-success">{formSuccess}</div>}
@@ -214,6 +285,37 @@ function App() {
             </label>
 
             <label>
+              Причина звернення / скарги
+              <textarea
+                rows="3"
+                placeholder="Наприклад: тисне у скронях та крутиться голова другий день..."
+                value={symptoms}
+                onChange={(e) => setSymptoms(e.target.value)}
+              />
+            </label>
+
+            <button
+              type="button"
+              className="btn-ai"
+              onClick={handleAnalyzeSymptoms}
+              disabled={aiAnalyzing}
+            >
+              {aiAnalyzing ? 'AI аналізує симптоми...' : 'Підібрати лікаря за допомогою AI'}
+            </button>
+
+            {aiAnalysis && (
+              <div className="ai-result-card">
+                <div className="ai-result-header">
+                  <span>Рекомендовано: <strong>{aiAnalysis.recommended_specialty}</strong></span>
+                  <span className={`urgency-tag ${aiAnalysis.urgency === 'Терміново' ? 'urgent' : ''}`}>
+                    {aiAnalysis.urgency}
+                  </span>
+                </div>
+                <p>{aiAnalysis.advice}</p>
+              </div>
+            )}
+
+            <label>
               Спеціалізація лікаря
               <select value={specialty} onChange={(e) => setSpecialty(e.target.value)}>
                 {SPECIALTIES.filter((s) => s !== 'Усі напрямки').map((spec) => (
@@ -232,51 +334,67 @@ function App() {
               />
             </label>
 
-            <label>
-              Причина звернення / скарги
-              <textarea
-                rows="3"
-                placeholder="Коротко опишіть симптоми (до 500 символів)..."
-                value={symptoms}
-                onChange={(e) => setSymptoms(e.target.value)}
-              />
-            </label>
-
             <button type="submit" className="btn-primary">Надіслати заявку</button>
           </form>
         </section>
 
-        <section className="panel list-panel">
-          <div className="list-header">
-            <h2>Журнал консультацій</h2>
-            <select
-              className="filter-select"
-              value={filterSpecialty}
-              onChange={(e) => setFilterSpecialty(e.target.value)}
-            >
-              {SPECIALTIES.map((spec) => (
-                <option key={spec} value={spec}>{spec}</option>
+        {/* Права колонка: AI-чат-бот + журнал консультацій */}
+        <div className="right-column">
+          <section className="panel chat-panel">
+            <h2>AI-консультант реєстратури (Google Gemini)</h2>
+            <div className="chat-window">
+              {chatMessages.map((msg, idx) => (
+                <div key={idx} className={`chat-bubble ${msg.role}`}>
+                  <strong>{msg.role === 'user' ? 'Ви:' : 'MedClinic AI:'}</strong> {msg.text}
+                </div>
               ))}
-            </select>
-          </div>
-
-          {loading ? (
-            <div className="empty-state">Завантаження даних...</div>
-          ) : filteredList.length === 0 ? (
-            <div className="empty-state">Записів за обраним напрямком не знайдено.</div>
-          ) : (
-            <div className="cards-container">
-              {filteredList.map((item) => (
-                <ConsultationCard
-                  key={item.id}
-                  item={item}
-                  onToggleStatus={handleToggleStatus}
-                  onDelete={handleDelete}
-                />
-              ))}
+              {chatLoading && <div className="chat-bubble assistant">Друкує відповідь...</div>}
             </div>
-          )}
-        </section>
+            <form className="chat-input-form" onSubmit={handleSendChat}>
+              <input
+                type="text"
+                placeholder="Запитайте про підготовку до прийому чи вибір лікаря..."
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+              />
+              <button type="submit" className="btn-primary" disabled={chatLoading}>
+                Надіслати
+              </button>
+            </form>
+          </section>
+
+          <section className="panel list-panel">
+            <div className="list-header">
+              <h2>Журнал консультацій</h2>
+              <select
+                className="filter-select"
+                value={filterSpecialty}
+                onChange={(e) => setFilterSpecialty(e.target.value)}
+              >
+                {SPECIALTIES.map((spec) => (
+                  <option key={spec} value={spec}>{spec}</option>
+                ))}
+              </select>
+            </div>
+
+            {loading ? (
+              <div className="empty-state">Завантаження даних...</div>
+            ) : filteredList.length === 0 ? (
+              <div className="empty-state">Записів за обраним напрямком не знайдено.</div>
+            ) : (
+              <div className="cards-container">
+                {filteredList.map((item) => (
+                  <ConsultationCard
+                    key={item.id}
+                    item={item}
+                    onToggleStatus={handleToggleStatus}
+                    onDelete={handleDelete}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
       </main>
     </div>
   );

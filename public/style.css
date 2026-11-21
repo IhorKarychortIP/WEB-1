@@ -19,7 +19,7 @@ body {
 }
 
 .nav-content {
-  max-width: 1040px;
+  max-width: 1080px;
   margin: 0 auto;
   display: flex;
   justify-content: space-between;
@@ -56,6 +56,11 @@ body {
   color: #64748b;
 }
 
+.nav-badges {
+  display: flex;
+  gap: 0.6rem;
+}
+
 .stats-pill {
   background-color: #f8fafc;
   border: 1px solid #cbd5e1;
@@ -66,19 +71,25 @@ body {
 }
 
 .main-grid {
-  max-width: 1040px;
+  max-width: 1080px;
   margin: 2rem auto;
   padding: 0 1.5rem;
   display: grid;
-  grid-template-columns: 350px 1fr;
+  grid-template-columns: 370px 1fr;
   gap: 1.5rem;
   align-items: start;
 }
 
-@media (max-width: 820px) {
+@media (max-width: 860px) {
   .main-grid {
     grid-template-columns: 1fr;
   }
+}
+
+.right-column {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
 }
 
 .panel {
@@ -101,6 +112,21 @@ body {
   margin-bottom: 1.25rem;
 }
 
+.form-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: #0284c7;
+  font-size: 0.8rem;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
 .booking-form {
   display: flex;
   flex-direction: column;
@@ -118,6 +144,7 @@ body {
 
 .booking-form input,
 .booking-form select,
+.booking-form textarea,
 .filter-select {
   padding: 0.65rem 0.8rem;
   border: 1px solid #cbd5e1;
@@ -129,8 +156,14 @@ body {
   transition: border-color 0.2s, background-color 0.2s;
 }
 
+.booking-form textarea {
+  resize: vertical;
+  font-size: 0.9rem;
+}
+
 .booking-form input:focus,
 .booking-form select:focus,
+.booking-form textarea:focus,
 .filter-select:focus {
   border-color: #0284c7;
   background-color: #ffffff;
@@ -149,8 +182,146 @@ body {
   transition: background-color 0.2s;
 }
 
-.btn-primary:hover {
+.btn-primary:hover:not(:disabled) {
   background-color: #0369a1;
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.btn-ai {
+  padding: 0.6rem 0.9rem;
+  background-color: #ecfdf5;
+  color: #047857;
+  border: 1px solid #6ee7b7;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btn-ai:hover:not(:disabled) {
+  background-color: #d1fae5;
+}
+
+.btn-ai:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.ai-result-card {
+  background-color: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-left: 4px solid #0284c7;
+  border-radius: 8px;
+  padding: 0.75rem 0.9rem;
+  font-size: 0.84rem;
+  color: #0f172a;
+}
+
+.ai-result-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.35rem;
+}
+
+.urgency-tag {
+  background-color: #e0f2fe;
+  color: #0369a1;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.urgency-tag.urgent {
+  background-color: #fef3c7;
+  color: #b45309;
+}
+
+.alert {
+  padding: 0.65rem 0.85rem;
+  border-radius: 8px;
+  font-size: 0.825rem;
+  margin-bottom: 1rem;
+  line-height: 1.4;
+}
+
+.alert-error {
+  background-color: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+
+.alert-success {
+  background-color: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+}
+
+.chat-panel h2 {
+  margin-bottom: 0.85rem;
+}
+
+.chat-window {
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0.85rem;
+  max-height: 210px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+
+.chat-bubble {
+  padding: 0.6rem 0.85rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.chat-bubble.assistant {
+  background-color: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #1e293b;
+  align-self: flex-start;
+}
+
+.chat-bubble.user {
+  background-color: #e0f2fe;
+  color: #0c4a6e;
+  align-self: flex-end;
+}
+
+.chat-input-form {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.chat-input-form input {
+  flex: 1;
+  padding: 0.6rem 0.85rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  background-color: #f8fafc;
+  outline: none;
+}
+
+.chat-input-form input:focus {
+  border-color: #0284c7;
+  background-color: #ffffff;
+}
+
+.chat-input-form .btn-primary {
+  margin-top: 0;
 }
 
 .list-header {
@@ -234,6 +405,16 @@ body {
   color: #64748b;
 }
 
+.symptoms-box {
+  margin-top: 0.45rem;
+  font-size: 0.825rem;
+  color: #475569;
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  padding: 0.45rem 0.65rem;
+  border-radius: 6px;
+}
+
 .card-actions {
   display: flex;
   flex-direction: column;
@@ -290,70 +471,4 @@ body {
   background-color: #f8fafc;
   border-radius: 8px;
   border: 1px dashed #cbd5e1;
-}
-
-.nav-badges {
-  display: flex;
-  gap: 0.6rem;
-}
-
-.form-header-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.btn-link {
-  background: none;
-  border: none;
-  color: #0284c7;
-  font-size: 0.8rem;
-  cursor: pointer;
-  text-decoration: underline;
-}
-
-.booking-form textarea {
-  padding: 0.65rem 0.8rem;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
-  font-size: 0.9rem;
-  background-color: #f8fafc;
-  color: #0f172a;
-  resize: vertical;
-  outline: none;
-}
-
-.booking-form textarea:focus {
-  border-color: #0284c7;
-  background-color: #ffffff;
-}
-
-.alert {
-  padding: 0.65rem 0.85rem;
-  border-radius: 8px;
-  font-size: 0.825rem;
-  margin-bottom: 1rem;
-  line-height: 1.4;
-}
-
-.alert-error {
-  background-color: #fef2f2;
-  color: #b91c1c;
-  border: 1px solid #fecaca;
-}
-
-.alert-success {
-  background-color: #ecfdf5;
-  color: #047857;
-  border: 1px solid #a7f3d0;
-}
-
-.symptoms-box {
-  margin-top: 0.45rem;
-  font-size: 0.825rem;
-  color: #475569;
-  background-color: #ffffff;
-  border: 1px solid #e2e8f0;
-  padding: 0.45rem 0.65rem;
-  border-radius: 6px;
 }

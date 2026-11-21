@@ -44,17 +44,17 @@ async function initDatabase() {
   }
 }
 
-// 1. Базова безпека HTTP-заголовків (налаштовано для роботи React CDN у браузері)
+// 1. Базова безпека HTTP-заголовків
 app.use(
   helmet({
     contentSecurityPolicy: false
   })
 );
 
-// Обмеження розміру JSON-тіла запиту (захист від перевантаження пам'яті)
+// Обмеження розміру JSON-тіла запиту
 app.use(express.json({ limit: '10kb' }));
 
-// 2. Middleware моніторингу продуктивності: підрахунок запитів, помилок та середнього часу відповіді
+// 2. Middleware моніторингу продуктивності
 const metrics = {
   totalRequests: 0,
   errorCount: 0,
@@ -82,7 +82,7 @@ app.use((req, res, next) => {
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
-// 3. Ендпоінт моніторингу продуктивності та стану сервісу (Health Check для Render / UptimeRobot)
+// 3. Ендпоінт моніторингу продуктивності та стану сервісу (Health Check)
 app.get('/api/health', async (req, res) => {
   const dbStart = process.hrtime.bigint();
   let dbStatus = 'connected';
@@ -118,7 +118,7 @@ app.get('/api/health', async (req, res) => {
   });
 });
 
-// 4. In-memory Rate Limiter для POST-запитів (не більше 15 заявок за хвилину з одного IP)
+// 4. In-memory Rate Limiter для POST-запитів
 const requestLog = new Map();
 function postRateLimiter(req, res, next) {
   const ip = req.ip;
@@ -183,7 +183,94 @@ function validateConsultationInput(body) {
   };
 }
 
-// 6. REST API маршрути для роботи з консультаціями
+// 6. Інтеграція Google Gemini AI API (аналіз симптомів та чат-бот реєстратури)
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const GEMINI_MODEL = 'gemini-2.5-flash';
+
+async function callGemini(promptText, systemInstruction) {
+  if (!GEMINI_API_KEY) {
+    throw new Error('На сервері не налаштовано змінну середовища GEMINI_API_KEY.');
+  }
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      systemInstruction: {
+        parts: [{ text: systemInstruction }]
+      },
+      contents: [
+        {
+          role: 'user',
+          parts: [{ text: promptText }]
+        }
+      ],
+      generationConfig: {
+        temperature: 0.4
+      }
+    })
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Помилка Gemini API (${response.status}): ${errText}`);
+  }
+
+  const data = await response.json();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || 'Не вдалося сформувати відповідь.';
+}
+
+app.post('/api/ai/analyze-symptoms', postRateLimiter, async (req, res) => {
+  const symptoms = sanitizeText(req.body.symptoms);
+  if (symptoms.length < 5) {
+    return res.status(400).json({ error: 'Опишіть симптоми детальніше (мінімум 5 символів) для AI-аналізу.' });
+  }
+
+  const systemPrompt = `Ти медичний AI-асистент електронної реєстратури MedClinic.
+Проаналізуй скарги пацієнта та поверни відповідь СУВОРО у форматі JSON без markdown-обгорток:
+{
+  "recommended_specialty": "одне зі значень: Терапевт, Кардіолог, Невролог, Офтальмолог, Дерматолог",
+  "urgency": "Планово або Терміново",
+  "advice": "коротка рекомендація до 2 речень українською мовою без постановки діагнозу"
+}`;
+
+  try {
+    const rawReply = await callGemini(`Скарги пацієнта: ${symptoms}`, systemPrompt);
+    const cleanedJson = rawReply.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(cleanedJson);
+
+    if (!ALLOWED_SPECIALTIES.includes(parsed.recommended_specialty)) {
+      parsed.recommended_specialty = 'Терапевт';
+    }
+
+    res.json(parsed);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/ai/chat', postRateLimiter, async (req, res) => {
+  const message = sanitizeText(req.body.message);
+  if (!message) {
+    return res.status(400).json({ error: 'Повідомлення не може бути порожнім.' });
+  }
+
+  const systemPrompt = `Ти ввічливий віртуальний консультант приватної поліклініки MedClinic.
+Доступні спеціалісти: Терапевт, Кардіолог, Невролог, Офтальмолог, Дерматолог.
+Графік роботи: Пн-Сб з 08:00 до 20:00.
+Відповідай стисло, професійно українською мовою (до 3-4 речень). Не став медичних діагнозів і не призначай ліки — за потреби рекомендуй записатися на консультацію через форму на сайті.`;
+
+  try {
+    const reply = await callGemini(message, systemPrompt);
+    res.json({ reply });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 7. REST API маршрути для роботи з консультаціями
 app.get('/api/consultations', async (req, res) => {
   try {
     const { specialty } = req.query;
